@@ -101,7 +101,7 @@ int main (int argc, char *argv[])
 						       REQUEST_STATUS, 0, 0,
 						       data, sizeof (data), 0);
 			if (ret < 0) {
-				fprintf (stderr, "Failed to send request 56: %s (%s)\n",
+				fprintf (stderr, "Failed to read status: %s (%s)\n",
 					 libusb_error_name (ret), strerror (errno));
 				error = true;
 			}
