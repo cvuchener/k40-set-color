@@ -32,22 +32,47 @@ extern "C" {
 #define CORSAIR_K40_ID	0x1b0e
 
 #define REQUEST_SET_COLOR	51
+#define REQUEST_STATUS	4
 
 static const char *usage =
 	"Usage: %s [options] red green blue\n"
 	"Options are:\n"
 	" -p<num>,--profile <num>	Set color for profile <num> only.\n"
+	" -r,--read			Read the current color and exit.\n"
 	" -h,--help			Print this help message.\n"
 	;
 
 int main (int argc, char *argv[])
 {
+	/*
+	 * Init libusb context and device
+	 */
+	int ret;
+	bool error = false;
+	libusb_context *context;
+	if (0 != (ret = libusb_init (&context))) {
+		fprintf (stderr, "Failed to initialize libusb: %s\n", libusb_error_name (ret));
+		return EXIT_FAILURE;
+	}
+	libusb_set_debug (context, LIBUSB_LOG_LEVEL_WARNING);
+
+	libusb_device_handle *device;
+	if (!(device = libusb_open_device_with_vid_pid (context, CORSAIR_ID, CORSAIR_K40_ID))) {
+		fprintf (stderr, "Device not found\n");
+		return EXIT_FAILURE;
+	}
+
+	/*
+	 * Parse arguments
+	 */
 	enum {
 		ProfileOpt = 256,
+		ReadOpt,
 		HelpOpt,
 	};
 	struct option longopts[] = {
 		{ "profile", required_argument, nullptr, ProfileOpt },
+		{ "read", no_argument, nullptr, ReadOpt },
 		{ "help", no_argument, nullptr, HelpOpt },
 		{ nullptr, 0, nullptr, 0 }
 	};
@@ -55,7 +80,7 @@ int main (int argc, char *argv[])
 	int color[3];
 
 	int opt;
-	while (-1 != (opt = getopt_long (argc, argv, "p:h", longopts, nullptr))) {
+	while (-1 != (opt = getopt_long (argc, argv, "p:rh", longopts, nullptr))) {
 		switch (opt) {
 		case 'p':
 		case ProfileOpt: {
@@ -67,6 +92,22 @@ int main (int argc, char *argv[])
 			}
 			target = profile;
 			break;
+		}
+		case 'r':
+		case ReadOpt: {
+			uint8_t data[10];
+			ret = libusb_control_transfer (device,
+						       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+						       REQUEST_STATUS, 0, 0,
+						       data, sizeof (data), 0);
+			if (ret < 0) {
+				fprintf (stderr, "Failed to send request 56: %s (%s)\n",
+					 libusb_error_name (ret), strerror (errno));
+				error = true;
+			}
+			else
+				printf ("%hhu %hhu %hhu\n", data[4], data[5], data[6]);
+			goto libusb_cleanup;
 		}
 
 		case 'h':
@@ -95,24 +136,6 @@ int main (int argc, char *argv[])
 	}
 
 	/*
-	 * Init libusb context and device
-	 */
-	int ret;
-	bool error = false;
-	libusb_context *context;
-	if (0 != (ret = libusb_init (&context))) {
-		fprintf (stderr, "Failed to initialize libusb: %s\n", libusb_error_name (ret));
-		return EXIT_FAILURE;
-	}
-	libusb_set_debug (context, LIBUSB_LOG_LEVEL_WARNING);
-
-	libusb_device_handle *device;
-	if (!(device = libusb_open_device_with_vid_pid (context, CORSAIR_ID, CORSAIR_K40_ID))) {
-		fprintf (stderr, "Device not found\n");
-		return EXIT_FAILURE;
-	}
-
-	/*
 	 * Set LED color
 	 */
 	ret = libusb_control_transfer (device,
@@ -128,6 +151,7 @@ int main (int argc, char *argv[])
 	/*
 	 * Clean up libusb
 	 */
+libusb_cleanup:
 	libusb_close (device);
 	libusb_exit (context);
 
