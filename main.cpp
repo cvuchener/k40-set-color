@@ -138,6 +138,60 @@ int main (int argc, char *argv[])
 	/*
 	 * Set LED color
 	 */
+#ifdef REQUEST_56
+	ret = libusb_control_transfer (device,
+				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+				       56, 0x0001, 0,
+				       nullptr, 0, 0);
+	if (ret < 0) {
+		fprintf (stderr, "Failed to send request 56: %s (%s)\n",
+				 libusb_error_name (ret), strerror (errno));
+	}
+	{
+		uint8_t data[10];
+		ret = libusb_control_transfer (device,
+					       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+					       REQUEST_STATUS, 0, 0,
+					       data, sizeof (data), 0);
+		if (ret < 0) {
+			fprintf (stderr, "Failed to read status: %s (%s)\n",
+				 libusb_error_name (ret), strerror (errno));
+		}
+		else {
+			fprintf (stderr, "Status after request 56:");
+			for (unsigned int i = 0; i < sizeof (data); ++i)
+				fprintf (stderr, " %02hhx", data[i]);
+			fprintf (stderr, "\n");
+		}
+	}
+#endif
+#ifdef REQUEST_50
+	ret = libusb_control_transfer (device,
+				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+				       50, 0x0600, 0,
+				       nullptr, 0, 0);
+	if (ret < 0) {
+		fprintf (stderr, "Failed to send request 50: %s (%s)\n",
+				 libusb_error_name (ret), strerror (errno));
+	}
+	{
+		uint8_t data[10];
+		ret = libusb_control_transfer (device,
+					       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+					       REQUEST_STATUS, 0, 0,
+					       data, sizeof (data), 0);
+		if (ret < 0) {
+			fprintf (stderr, "Failed to read status: %s (%s)\n",
+				 libusb_error_name (ret), strerror (errno));
+		}
+		else {
+			fprintf (stderr, "Status after request 50:");
+			for (unsigned int i = 0; i < sizeof (data); ++i)
+				fprintf (stderr, " %02hhx", data[i]);
+			fprintf (stderr, "\n");
+		}
+	}
+#endif
 	ret = libusb_control_transfer (device,
 				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
 				       REQUEST_SET_COLOR, color[1] << 8 | color[2], target << 8 | color[0],
