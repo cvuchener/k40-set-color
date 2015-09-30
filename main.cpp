@@ -194,7 +194,7 @@ int main (int argc, char *argv[])
 #endif
 	ret = libusb_control_transfer (device,
 				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-				       REQUEST_SET_COLOR, color[1] << 8 | color[2], target << 8 | color[0],
+				       REQUEST_SET_COLOR, color[1] << 8 | color[0], target << 8 | color[2],
 				       nullptr, 0, 0);
 	if (ret < 0) {
 		fprintf (stderr, "Failed to set color: %s (%s)\n",
