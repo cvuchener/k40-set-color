@@ -3,7 +3,6 @@ CXXFLAGS=-Wall -std=c++11
 CXXFLAGS+=-g -O0
 CXXFLAGS+=$(shell pkg-config libusb-1.0 --cflags)
 LDFLAGS=$(shell pkg-config libusb-1.0 --libs)
-#CXXFLAGS+=-DREQUEST_56
 #CXXFLAGS+=-DREQUEST_50
 
 TARGET=k40-set-color

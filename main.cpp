@@ -31,6 +31,8 @@ extern "C" {
 #define CORSAIR_ID	0x1b1c
 #define CORSAIR_K40_ID	0x1b0e
 
+#define DELAY	200000
+
 #define REQUEST_SET_COLOR	51
 #define REQUEST_STATUS	4
 
@@ -38,6 +40,7 @@ static const char *usage =
 	"Usage: %s [options] red green blue\n"
 	"Options are:\n"
 	" -p<num>,--profile <num>	Set color for profile <num> only.\n"
+	" -m<0|1>,--mode <0|1>		Set color mode (0 = True Color, 1 = Max brightness).\n"
 	" -r,--read			Read the current color and exit.\n"
 	" -h,--help			Print this help message.\n"
 	;
@@ -67,11 +70,13 @@ int main (int argc, char *argv[])
 	 */
 	enum {
 		ProfileOpt = 256,
+		ModeOpt,
 		ReadOpt,
 		HelpOpt,
 	};
 	struct option longopts[] = {
 		{ "profile", required_argument, nullptr, ProfileOpt },
+		{ "mode", required_argument, nullptr, ModeOpt },
 		{ "read", no_argument, nullptr, ReadOpt },
 		{ "help", no_argument, nullptr, HelpOpt },
 		{ nullptr, 0, nullptr, 0 }
@@ -80,7 +85,7 @@ int main (int argc, char *argv[])
 	int color[3];
 
 	int opt;
-	while (-1 != (opt = getopt_long (argc, argv, "p:rh", longopts, nullptr))) {
+	while (-1 != (opt = getopt_long (argc, argv, "p:m:rh", longopts, nullptr))) {
 		switch (opt) {
 		case 'p':
 		case ProfileOpt: {
@@ -91,6 +96,42 @@ int main (int argc, char *argv[])
 				return EXIT_FAILURE;
 			}
 			target = profile;
+			break;
+		}
+		case 'm':
+		case ModeOpt: {
+			char *endptr;
+			int mode = strtol (optarg, &endptr, 0);
+			if (*endptr != '\0' || mode < 0 || mode > 1) {
+				fprintf (stderr, "Invalid color mode: %s.\n", optarg);
+				return EXIT_FAILURE;
+			}
+			ret = libusb_control_transfer (device,
+						       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+						       56, mode, 0,
+						       nullptr, 0, 0);
+			if (ret < 0) {
+				fprintf (stderr, "Failed to set color mode: %s (%s)\n",
+					 libusb_error_name (ret), strerror (errno));
+			}
+			usleep (DELAY);
+			{
+				uint8_t data[10];
+				ret = libusb_control_transfer (device,
+							       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+							       REQUEST_STATUS, 0, 0,
+							       data, sizeof (data), 0);
+				if (ret < 0) {
+					fprintf (stderr, "Failed to read status: %s (%s)\n",
+						 libusb_error_name (ret), strerror (errno));
+				}
+				else {
+					fprintf (stderr, "Status after setting color mode:");
+					for (unsigned int i = 0; i < sizeof (data); ++i)
+						fprintf (stderr, " %02hhx", data[i]);
+					fprintf (stderr, "\n");
+				}
+			}
 			break;
 		}
 		case 'r':
@@ -138,33 +179,6 @@ int main (int argc, char *argv[])
 	/*
 	 * Set LED color
 	 */
-#ifdef REQUEST_56
-	ret = libusb_control_transfer (device,
-				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-				       56, 0x0001, 0,
-				       nullptr, 0, 0);
-	if (ret < 0) {
-		fprintf (stderr, "Failed to send request 56: %s (%s)\n",
-				 libusb_error_name (ret), strerror (errno));
-	}
-	{
-		uint8_t data[10];
-		ret = libusb_control_transfer (device,
-					       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-					       REQUEST_STATUS, 0, 0,
-					       data, sizeof (data), 0);
-		if (ret < 0) {
-			fprintf (stderr, "Failed to read status: %s (%s)\n",
-				 libusb_error_name (ret), strerror (errno));
-		}
-		else {
-			fprintf (stderr, "Status after request 56:");
-			for (unsigned int i = 0; i < sizeof (data); ++i)
-				fprintf (stderr, " %02hhx", data[i]);
-			fprintf (stderr, "\n");
-		}
-	}
-#endif
 #ifdef REQUEST_50
 	ret = libusb_control_transfer (device,
 				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
@@ -174,6 +188,7 @@ int main (int argc, char *argv[])
 		fprintf (stderr, "Failed to send request 50: %s (%s)\n",
 				 libusb_error_name (ret), strerror (errno));
 	}
+	usleep (DELAY);
 	{
 		uint8_t data[10];
 		ret = libusb_control_transfer (device,
