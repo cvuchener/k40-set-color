@@ -33,20 +33,35 @@ extern "C" {
 
 #define DELAY	200000
 
-#define REQUEST_SET_COLOR	51
 #define REQUEST_STATUS	4
+#define REQUEST_SET_ANIM	49
+#define REQUEST_SET_COLOR_MODE	50
+#define REQUEST_SET_COLOR	51
+#define REQUEST_SET_COLOR_CONTROL	56
+
+#define COLOR_CONTROL_SW	0x0600
+#define COLOR_CONTROL_HW	0x0a00
+
+void print_status (libusb_device_handle *device);
 
 static const char *usage =
 	"Usage: %s [options] red green blue\n"
 	"Options are:\n"
-	" -p<num>,--profile <num>	Set color for profile <num> only.\n"
-	" -m<0|1>,--mode <0|1>		Set color mode (0 = True Color, 1 = Max brightness).\n"
-	" -r,--read			Read the current color and exit.\n"
-	" -h,--help			Print this help message.\n"
+	"	-c, --control=control	Set control mode: sw (software) or hw (hardware).\n"
+	"	-p, --profile=num	Set color for profile num only.\n"
+	"	-m, --mode=mode		Set color mode: true (True Color) or max (Max brightness).\n"
+	"	-a, --anim=anim		Set animation: off, pulse, cycle.\n"
+	"	-r, --read		Read the current color and exit.\n"
+	"	-h, --help		Print this help message.\n"
 	;
 
 int main (int argc, char *argv[])
 {
+	if (argc == 1) {
+		fprintf (stderr, usage, argv[0]);
+		return EXIT_FAILURE;
+	}
+
 	/*
 	 * Init libusb context and device
 	 */
@@ -65,17 +80,23 @@ int main (int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+	print_status (device);
+
 	/*
 	 * Parse arguments
 	 */
 	enum {
 		ProfileOpt = 256,
 		ModeOpt,
+		ControlOpt,
+		AnimOpt,
 		ReadOpt,
 		HelpOpt,
 	};
 	struct option longopts[] = {
 		{ "profile", required_argument, nullptr, ProfileOpt },
+		{ "control", required_argument, nullptr, ControlOpt },
+		{ "anim", required_argument, nullptr, AnimOpt },
 		{ "mode", required_argument, nullptr, ModeOpt },
 		{ "read", no_argument, nullptr, ReadOpt },
 		{ "help", no_argument, nullptr, HelpOpt },
@@ -85,7 +106,7 @@ int main (int argc, char *argv[])
 	int color[3];
 
 	int opt;
-	while (-1 != (opt = getopt_long (argc, argv, "p:m:rh", longopts, nullptr))) {
+	while (-1 != (opt = getopt_long (argc, argv, "p:m:c:a:rh", longopts, nullptr))) {
 		switch (opt) {
 		case 'p':
 		case ProfileOpt: {
@@ -98,40 +119,80 @@ int main (int argc, char *argv[])
 			target = profile;
 			break;
 		}
+		case 'c':
+		case ControlOpt: {
+			uint16_t control;
+			if (strcmp (optarg, "sw") == 0)
+				control = COLOR_CONTROL_SW;
+			else if (strcmp (optarg, "hw") == 0)
+				control = COLOR_CONTROL_HW;
+			else {
+				fprintf (stderr, "Invalid control mode: %s.\n", optarg);
+				return EXIT_FAILURE;
+			}
+			ret = libusb_control_transfer (device,
+						       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+						       REQUEST_SET_COLOR_CONTROL, control, 0,
+						       nullptr, 0, 0);
+			if (ret < 0) {
+				fprintf (stderr, "Failed to set color control: %s (%s).\n",
+					 libusb_error_name (ret), strerror (errno));
+				return EXIT_FAILURE;
+			}
+			fprintf (stderr, "Set color control to 0x%04hX.\n", control);
+			usleep (DELAY);
+			print_status (device);
+			break;
+		}
+		case 'a':
+		case AnimOpt: {
+			uint16_t anim;
+			if (strcmp (optarg, "off") == 0)
+				anim = 0;
+			else if (strcmp (optarg, "pulse") == 0)
+				anim = 1;
+			else if (strcmp (optarg, "cycle") == 0)
+				anim = 2;
+			else {
+				fprintf (stderr, "Invalid animation: %s.\n", optarg);
+				return EXIT_FAILURE;
+			}
+			ret = libusb_control_transfer (device,
+						       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+						       REQUEST_SET_ANIM, 0, anim,
+						       nullptr, 0, 0);
+			if (ret < 0) {
+				fprintf (stderr, "Failed to set animation: %s (%s).\n",
+					 libusb_error_name (ret), strerror (errno));
+				return EXIT_FAILURE;
+			}
+			fprintf (stderr, "Set animation to 0x%04hX.\n", anim);
+			usleep (DELAY);
+			print_status (device);
+			break;
+		}
 		case 'm':
 		case ModeOpt: {
-			char *endptr;
-			int mode = strtol (optarg, &endptr, 0);
-			if (*endptr != '\0' || mode < 0 || mode > 1) {
+			uint16_t mode;
+			if (strcmp (optarg, "true"))
+				mode = 0;
+			else if (strcmp (optarg, "max"))
+				mode = 1;
+			else {
 				fprintf (stderr, "Invalid color mode: %s.\n", optarg);
 				return EXIT_FAILURE;
 			}
 			ret = libusb_control_transfer (device,
 						       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-						       56, mode, 0,
+						       REQUEST_SET_COLOR_MODE, mode, 0,
 						       nullptr, 0, 0);
 			if (ret < 0) {
-				fprintf (stderr, "Failed to set color mode: %s (%s)\n",
+				fprintf (stderr, "Failed to set color mode: %s (%s).\n",
 					 libusb_error_name (ret), strerror (errno));
 			}
+			fprintf (stderr, "Set color mode to: 0x%04hX.\n", mode);
 			usleep (DELAY);
-			{
-				uint8_t data[10];
-				ret = libusb_control_transfer (device,
-							       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-							       REQUEST_STATUS, 0, 0,
-							       data, sizeof (data), 0);
-				if (ret < 0) {
-					fprintf (stderr, "Failed to read status: %s (%s)\n",
-						 libusb_error_name (ret), strerror (errno));
-				}
-				else {
-					fprintf (stderr, "Status after setting color mode:");
-					for (unsigned int i = 0; i < sizeof (data); ++i)
-						fprintf (stderr, " %02hhx", data[i]);
-					fprintf (stderr, "\n");
-				}
-			}
+			print_status (device);
 			break;
 		}
 		case 'r':
@@ -161,6 +222,9 @@ int main (int argc, char *argv[])
 		}
 	}
 
+	if (argc-optind == 0)
+		goto libusb_cleanup;
+
 	if (argc-optind != 3) {
 		fprintf (stderr, "Invalid argument count.\n");
 		fprintf (stderr, usage, argv[0]);
@@ -179,34 +243,6 @@ int main (int argc, char *argv[])
 	/*
 	 * Set LED color
 	 */
-#ifdef REQUEST_50
-	ret = libusb_control_transfer (device,
-				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-				       50, 0x0600, 0,
-				       nullptr, 0, 0);
-	if (ret < 0) {
-		fprintf (stderr, "Failed to send request 50: %s (%s)\n",
-				 libusb_error_name (ret), strerror (errno));
-	}
-	usleep (DELAY);
-	{
-		uint8_t data[10];
-		ret = libusb_control_transfer (device,
-					       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-					       REQUEST_STATUS, 0, 0,
-					       data, sizeof (data), 0);
-		if (ret < 0) {
-			fprintf (stderr, "Failed to read status: %s (%s)\n",
-				 libusb_error_name (ret), strerror (errno));
-		}
-		else {
-			fprintf (stderr, "Status after request 50:");
-			for (unsigned int i = 0; i < sizeof (data); ++i)
-				fprintf (stderr, " %02hhx", data[i]);
-			fprintf (stderr, "\n");
-		}
-	}
-#endif
 	ret = libusb_control_transfer (device,
 				       LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
 				       REQUEST_SET_COLOR, color[1] << 8 | color[0], target << 8 | color[2],
@@ -216,6 +252,10 @@ int main (int argc, char *argv[])
 				 libusb_error_name (ret), strerror (errno));
 		error = true;
 	}
+	if (target == 0)
+		fprintf (stderr, "Set color %02hhX%02hhX%02hhX.\n", color[0], color[1], color[2]);
+	else
+		fprintf (stderr, "Set color %02hhX%02hhX%02hhX for profile %d.\n", color[0], color[1], color[2], target);
 
 	/*
 	 * Clean up libusb
@@ -225,4 +265,25 @@ libusb_cleanup:
 	libusb_exit (context);
 
 	return (error ? EXIT_FAILURE : EXIT_SUCCESS);
+}
+
+void print_status (libusb_device_handle *device)
+{
+	int ret;
+	uint8_t data[10];
+
+	ret = libusb_control_transfer (device,
+				       LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+				       REQUEST_STATUS, 0, 0,
+				       data, sizeof (data), 0);
+	if (ret < 0) {
+		fprintf (stderr, "Failed to read status: %s (%s)\n",
+				 libusb_error_name (ret), strerror (errno));
+	}
+	else {
+		fprintf (stderr, "Status:");
+		for (unsigned int i = 0; i < sizeof (data); ++i)
+			fprintf (stderr, " %02hhx", data[i]);
+		fprintf (stderr, "\n");
+	}
 }
