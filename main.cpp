@@ -174,9 +174,9 @@ int main (int argc, char *argv[])
 		case 'm':
 		case ModeOpt: {
 			uint16_t mode;
-			if (strcmp (optarg, "true"))
+			if (strcmp (optarg, "true") == 0)
 				mode = 0;
-			else if (strcmp (optarg, "max"))
+			else if (strcmp (optarg, "max") == 0)
 				mode = 1;
 			else {
 				fprintf (stderr, "Invalid color mode: %s.\n", optarg);
